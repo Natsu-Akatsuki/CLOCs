@@ -1,9 +1,15 @@
 ## CLOCs: Camera-LiDAR Object Candidates Fusion for 3D Object Detection
 
-CLOCs is a novel Camera-LiDAR Object Candidates fusion network. It provides a low-complexity multi-modal fusion framework that improves the performance of single-modality detectors. CLOCs operates on the combined output candidates of any 3D and any 2D detector, and is trained to produce more accurate 3D and 2D detection results.
+简介CLOCs
 
-## Environment
-Tested on python3.6, pytorch 1.1.0, Ubuntu 16.04/18.04.
+## Environment（环境依赖）
+依赖：
+
+python3.6
+
+pytorch1.1
+
+ubuntu 16.04/18.04
 
 ## Performance on KITTI validation set (3712 training, 3769 validation)
 ### CLOCs_SecCas (SECOND+Cascade-RCNN) VS SECOND:
@@ -19,7 +25,7 @@ Car:      Easy@0.7       Moderate@0.7   Hard@0.7
 bev:  AP: 90.52 / 90.36, 89.29 / 88.10, 87.84 / 86.80
 3d:   AP: 89.49 / 88.31, 79.31 / 77.99, 77.36 / 76.52
 ```
-## Install
+## Install（安装包依赖）
 
 The code is developed based on SECOND-1.5, please follow the [SECOND-1.5](https://github.com/traveller59/second.pytorch/tree/v1.5) to setup the environment, the dependences for SECOND-1.5 are needed.
 ```bash
@@ -106,25 +112,18 @@ For example if you want to test the pretrained model downloaded from [here](http
 python ./pytorch/train.py evaluate --config_path=./configs/car.fhd.config --model_dir=/dir/to/your/CLOCs_SecCas_pretrained --measure_time=True --batch_size=1
 ```
 If you want to export KITTI format label files, add ```pickle_result=False``` at the end of the above commamd.
+
+
+
 ## Fusion of other 3D and 2D detectors
-Step 1: Prepare the 2D detection candidates, run your 2D detector and save the results in KITTI format. It is recommended to run inference with NMS score threshold equals to 0 (no score thresholding), but if you don't know how to setup this, it is also fine for CLOCs.
 
-Step 2: Prepare the 3D detection candidates, run your 3D detector and save the results in the format that SECOND could read, including a matrix with shape of N by 7 that contains the N 3D bounding boxes, and a N-element vector for the 3D confidence scores. 7 parameters correspond to the representation of a 3D bounding box. Be careful with the order and coordinate of the 7 parameters, if the parameters are in LiDAR coordinate, the order should be ```x, y, z, width, length, height, heading```; if the parameters are in camera coordinate, the orderr should be ```x, y, z, lenght, height, width, heading```. The details of the transformation functions can be found in file './second/pytorch/core/box_torch_ops.py'.
+步骤一：准备2D检测candidates，运行2D检测器，将结果保存为KITTI格式。推荐直接使用预测的值（NMS的分数阈值设为0）
 
-Step 3: Since the number of detection candidates are different for different 2D/3D detectors, you need to modify the corresponding parameters in the CLOCs code. Then train the CLOCs fusion. For example, there are 70400 (200x176x2) detection candidates in each frame from SECOND with batch size equals to 1. It is a very large number because SECOND is a one-stage detector, for other multi-stage detectors, you could just take the detection candidates before the final NMS function, that would reduce the number of detection candidates to hundreds or thousands.
+步骤二：准备3D检测candidates，运行3D检测器，将结果保存为SECOND可以读取的格式。
 
-Step 4: The output of CLOCs are fused confidence scores for all the 3D detection candidates, so you need to replace the old confidence scores (from your 3D detector) with the new fused confidence scores from CLOCs for post processing and evaluation. Then these 3D detection candidates with the corresponding CLOCs fused scores are treated as the input for your 3D detector post processing functions to generate final predictions for evaluation.
-### Citation
-If you find this work useful in your research, please consider citing:
-```
-@article{pang2020clocs,
-  title={CLOCs: Camera-LiDAR Object Candidates Fusion for 3D Object Detection},
-  author={Pang, Su and Morris, Daniel and Radha, Hayder},
-  booktitle={2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
-  year={2020}
-  organization={IEEE}
-}
-```
-### Acknowledgement
-Our code are mainly based on [SECOND](https://github.com/traveller59/second.pytorch/tree/v1.5), thanks for their excellent work!
+including a matrix with shape of N by 7 that contains the N 3D bounding boxes, and a N-element vector for the 3D confidence scores. 7 parameters correspond to the representation of a 3D bounding box. Be careful with the order and coordinate of the 7 parameters, if the parameters are in LiDAR coordinate, the order should be ```x, y, z, width, length, height, heading```; if the parameters are in camera coordinate, the orderr should be ```x, y, z, lenght, height, width, heading```. The details of the transformation functions can be found in file './second/pytorch/core/box_torch_ops.py'.
+
+步骤三：由于三维目标检测器的detection candidates的个数不同，需要修改CLOCs相关的参数。然后训练融合。比如，以一帧数据为例，second会生成70400个(200×176×2)个detection candidates；对于一维的目标检测器而言，这个值是很大的。对于其他二阶段的目标检测器，可以用二阶段的未进行NMS的detection candidates来进行融合（最终只需要融合几百个）
+
+步骤四：CLOCs的结果是3D detection candidates的修正后的置信度结果。再将这个结果送到后处理中进行融合。
 
