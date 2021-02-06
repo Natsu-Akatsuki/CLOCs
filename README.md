@@ -1,8 +1,8 @@
-## CLOCs: Camera-LiDAR Object Candidates Fusion for 3D Object Detection
+# CLOCs: Camera-LiDAR Object Candidates Fusion for 3D Object Detection
 
-简介CLOCs
 
-## Environment（环境依赖）
+
+## 环境依赖）
 依赖：
 
 python3.6
@@ -11,7 +11,10 @@ pytorch1.1
 
 ubuntu 16.04/18.04
 
-## Performance on KITTI validation set (3712 training, 3769 validation)
+## 
+
+## 测评指标
+
 ### CLOCs_SecCas (SECOND+Cascade-RCNN) VS SECOND:
 ```
 new 40 recall points
@@ -25,15 +28,20 @@ Car:      Easy@0.7       Moderate@0.7   Hard@0.7
 bev:  AP: 90.52 / 90.36, 89.29 / 88.10, 87.84 / 86.80
 3d:   AP: 89.49 / 88.31, 79.31 / 77.99, 77.36 / 76.52
 ```
+
+
 ## Install（安装包依赖）
 
-The code is developed based on SECOND-1.5, please follow the [SECOND-1.5](https://github.com/traveller59/second.pytorch/tree/v1.5) to setup the environment, the dependences for SECOND-1.5 are needed.
+当前代码基于 SECOND-1.5, please follow the [SECOND-1.5](https://github.com/traveller59/second.pytorch/tree/v1.5) to setup the environment, the dependences for SECOND-1.5 are needed.
 ```bash
 pip install shapely fire pybind11 tensorboardX protobuf scikit-image numba pillow
 ```
 Follow the instructions to install `spconv v1.0` ([commit 8da6f96](https://github.com/traveller59/spconv/tree/8da6f967fb9a054d8870c3515b1b44eca2103634)). Although CLOCs fusion does not need spconv, but SECOND codebase expects it to be correctly configured.
 
-## Prepare dataset (KITTI)
+
+
+## 准备数据集
+
 Download KITTI dataset and organize the files as follows:
 
 ```plain
@@ -56,15 +64,17 @@ Download KITTI dataset and organize the files as follows:
        └── kitti_infos_trainval.pkl
 ```
 
-Next, you could follow the SECOND-1.5 instructions to create kitti infos, reduced point cloud and groundtruth-database infos, or just download these files from [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) and put them in the correct directories as shown above.
+基于 SECOND-1.5 的教程创建 kitti infos, reduced point cloud and groundtruth-database infos, or 直接下载数据 [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) ，并放置到相应目录
 
-## Fusion of SECOND and Cascade-RCNN
+
+
+## 决策层数据融合
 ### Preparation
-CLOCs operates on the combined output of a 3D detector and a 2D detector. For this example, we use SECOND as the 3D detector, Cascade-RCNN as the 2D detector. 
+SECOND as the 3D detector, Cascade-RCNN as the 2D detector. 
 
-1. For this example, we use detections with sigmoid scores, you could download the Cascade-RCNN detections for the KITTI train and validations set from [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) file name:'cascade_rcnn_sigmoid_data', or you could run the 2D detector by your self and save the results for the fusion. You could also use your own 2D detector to generate these 2D detections and save them in KITTI format for fusion. 
-
-2. Then download the pretrained SECOND models from [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) file name: 'second_model.zip', create an empty directory named ```model_dir``` under your CLOCs root directory and unzip the files to ```model_dir```. Your CLOCs directory should look like this:
+1. 2D目标检测器使用`sigmoid scores`, 可以从这里直接输出文件 [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) `cascade_rcnn_sigmoid_data`；或使用这个或自己的二维目标检测器并导出相关的KITTI格式的结果。
+2. 下载`second`预训练模型到 ```model_dir```  [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) 
+3. 相应的文件夹架构如下：
 ```plain
 └── CLOCs
        ├── d2_detection_data    <-- 2D detection candidates data
@@ -74,7 +84,7 @@ CLOCs operates on the combined output of a 3D detector and a 2D detector. For th
        ├── README.md
 ```
 
-3. Then modify the config file carefully:
+3. 修改配置文件(`CLOCs/second/configs/car.fhd.config`)
 ```bash
 train_input_reader: {
   ...
@@ -98,20 +108,36 @@ eval_input_reader: {
 }
 
 ```
-### Train
+
+
+### 训练
+
 ```bash
 python ./pytorch/train.py train --config_path=./configs/car.fhd.config --model_dir=/dir/to/your_model_dir
 ```
-The trained models and related information will be saved in '/dir/to/your_model_dir'
-### Evaluation
+模型和相关信息将导出到`/dir/to/your_model_dir`
+
+
+
+### 测评
+
 ```bash
-python ./pytorch/train.py evaluate --config_path=./configs/car.fhd.config --model_dir=/dir/to/your/trained_model --measure_time=True --batch_size=1
+python ./pytorch/train.py evaluate 
+--config_path=./configs/car.fhd.config   \
+--model_dir=/dir/to/your/trained_model \
+--measure_time=True \
+--batch_size=1
 ```
-For example if you want to test the pretrained model downloaded from [here](https://drive.google.com/drive/folders/1ScFUWPwzK5_VXb-LYQZuZVkiBj-dTMJ9?usp=sharing) file name: 'CLOCs_SecCas_pretrained.zip', unzip it, then you could run:
+测评预训练模型`CLOCs_SecCas_pretrained.zip`
 ```bash
-python ./pytorch/train.py evaluate --config_path=./configs/car.fhd.config --model_dir=/dir/to/your/CLOCs_SecCas_pretrained --measure_time=True --batch_size=1
+python ./pytorch/train.py evaluate \
+--config_path=./configs/car.fhd.config \
+--model_dir=/home/helios/pcdet/CLOCs/model_dir/CLOCs_SecCas_pretrained \
+--measure_time=True \
+--batch_size=1 \
+--pickle_result=False
 ```
-If you want to export KITTI format label files, add ```pickle_result=False``` at the end of the above commamd.
+若想输出kitti格式的结果, 设置参数 ```pickle_result=False``` 
 
 
 

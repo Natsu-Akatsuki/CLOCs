@@ -17,9 +17,9 @@ from second.builder import target_assigner_builder, voxel_builder
 from second.data.preprocess import merge_second_batch
 from second.protos import pipeline_pb2
 from second.pytorch.builder import (box_coder_builder, input_reader_builder,
-                                      lr_scheduler_builder, optimizer_builder,
-                                      second_builder)
-from second.utils.eval import get_coco_eval_result, get_official_eval_result,bev_box_overlap,d3_box_overlap
+                                    lr_scheduler_builder, optimizer_builder,
+                                    second_builder)
+from second.utils.eval import get_coco_eval_result, get_official_eval_result, bev_box_overlap, d3_box_overlap
 from second.utils.progress_bar import ProgressBar
 from second.pytorch.core import box_torch_ops
 from second.pytorch.core.losses import SigmoidFocalClassificationLoss
@@ -32,7 +32,7 @@ def example_convert_to_torch(example, dtype=torch.float32,
     example_torch = {}
     float_names = [
         "voxels", "anchors", "reg_targets", "reg_weights", "bev_map", "rect",
-        "Trv2c", "P2", "d3_gt_boxes","gt_2d_boxes"
+        "Trv2c", "P2", "d3_gt_boxes", "gt_2d_boxes"
     ]
 
     for k, v in example.items():
@@ -48,15 +48,16 @@ def example_convert_to_torch(example, dtype=torch.float32,
             example_torch[k] = v
     return example_torch
 
+
 def build_inference_net(config_path,
-             model_dir,
-             result_path=None,
-             predict_test=False,
-             ckpt_path=None,
-             ref_detfile=None,
-             pickle_result=True,
-             measure_time=False,
-             batch_size=1):
+                        model_dir,
+                        result_path=None,
+                        predict_test=False,
+                        ckpt_path=None,
+                        ref_detfile=None,
+                        pickle_result=True,
+                        measure_time=False,
+                        batch_size=1):
     model_dir = pathlib.Path(model_dir)
     if predict_test:
         result_name = 'predict_test'
@@ -90,9 +91,10 @@ def build_inference_net(config_path,
     else:
         torchplus.train.restore(ckpt_path, net)
     batch_size = batch_size or input_cfg.batch_size
-    #batch_size = 1
+    # batch_size = 1
     net.eval()
     return net
+
 
 def train(config_path,
           model_dir,
@@ -121,7 +123,7 @@ def train(config_path,
     model_cfg = config.model.second
     train_cfg = config.train_config
     detection_2d_path = config.train_config.detection_2d_path
-    print("2d detection path:",detection_2d_path)
+    print("2d detection path:", detection_2d_path)
     center_limit_range = model_cfg.post_center_limit_range
     voxel_generator = voxel_builder.build(model_cfg.voxel_generator)
     bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
@@ -130,7 +132,7 @@ def train(config_path,
     target_assigner = target_assigner_builder.build(target_assigner_cfg,
                                                     bv_range, box_coder)
     class_names = target_assigner.classes
-    net = build_inference_net('./configs/car.fhd.config','../model_dir')
+    net = build_inference_net('./configs/car.fhd.config', '../model_dir')
     fusion_layer = fusion.fusion()
     fusion_layer.cuda()
     optimizer_cfg = train_cfg.optimizer
@@ -139,7 +141,8 @@ def train(config_path,
         net.metrics_to_float()
         net.convert_norm_to_float(net)
     loss_scale = train_cfg.loss_scale_factor
-    mixed_optimizer = optimizer_builder.build(optimizer_cfg, fusion_layer, mixed=train_cfg.enable_mixed_precision, loss_scale=loss_scale)
+    mixed_optimizer = optimizer_builder.build(optimizer_cfg, fusion_layer, mixed=train_cfg.enable_mixed_precision,
+                                              loss_scale=loss_scale)
     optimizer = mixed_optimizer
     # must restore optimizer AFTER using MixedPrecisionWrapper
     torchplus.train.try_restore_latest_checkpoints(model_dir,
@@ -162,9 +165,10 @@ def train(config_path,
     eval_dataset = input_reader_builder.build(
         eval_input_cfg,
         model_cfg,
-        training=True,   #if rhnning for test, here it needs to be False
+        training=True,  # if rhnning for test, here it needs to be False
         voxel_generator=voxel_generator,
         target_assigner=target_assigner)
+
     def _worker_init_fn(worker_id):
         time_seed = np.array(time.time(), dtype=np.int32)
         np.random.seed(time_seed + worker_id)
@@ -186,7 +190,6 @@ def train(config_path,
         num_workers=eval_input_cfg.num_workers,
         pin_memory=False,
         collate_fn=merge_second_batch)
-
 
     data_iter = iter(dataloader)
 
@@ -212,7 +215,7 @@ def train(config_path,
     t = time.time()
     ckpt_start_time = t
     total_loop = train_cfg.steps // train_cfg.steps_per_eval + 1
-    #print("steps, steps_per_eval, total_loop:", train_cfg.steps, train_cfg.steps_per_eval, total_loop)
+    # print("steps, steps_per_eval, total_loop:", train_cfg.steps, train_cfg.steps_per_eval, total_loop)
     # total_loop = remain_steps // train_cfg.steps_per_eval + 1
     clear_metrics_every_epoch = train_cfg.clear_metrics_every_epoch
     net.set_global_step(torch.tensor([0]))
@@ -237,41 +240,43 @@ def train(config_path,
                     example = next(data_iter)
                 example_torch = example_convert_to_torch(example, float_dtype)
                 batch_size = example["anchors"].shape[0]
-                all_3d_output_camera_dict, all_3d_output, top_predictions, fusion_input,tensor_index = net(example_torch,detection_2d_path)
-                d3_gt_boxes = example_torch["d3_gt_boxes"][0,:,:]
+                all_3d_output_camera_dict, all_3d_output, top_predictions, fusion_input, tensor_index = net(
+                    example_torch, detection_2d_path)
+                d3_gt_boxes = example_torch["d3_gt_boxes"][0, :, :]
                 if d3_gt_boxes.shape[0] == 0:
-                    target_for_fusion = np.zeros((1,70400,1))
-                    positives = torch.zeros(1,70400).type(torch.float32).cuda()
-                    negatives = torch.zeros(1,70400).type(torch.float32).cuda()
-                    negatives[:,:] = 1
+                    target_for_fusion = np.zeros((1, 70400, 1))
+                    positives = torch.zeros(1, 70400).type(torch.float32).cuda()
+                    negatives = torch.zeros(1, 70400).type(torch.float32).cuda()
+                    negatives[:, :] = 1
                 else:
                     d3_gt_boxes_camera = box_torch_ops.box_lidar_to_camera(
-                        d3_gt_boxes, example_torch['rect'][0,:], example_torch['Trv2c'][0,:])
-                    d3_gt_boxes_camera_bev = d3_gt_boxes_camera[:,[0,2,3,5,6]]
+                        d3_gt_boxes, example_torch['rect'][0, :], example_torch['Trv2c'][0, :])
+                    d3_gt_boxes_camera_bev = d3_gt_boxes_camera[:, [0, 2, 3, 5, 6]]
                     ###### predicted bev boxes
                     pred_3d_box = all_3d_output_camera_dict[0]["box3d_camera"]
-                    pred_bev_box = pred_3d_box[:,[0,2,3,5,6]]
-                    #iou_bev = bev_box_overlap(d3_gt_boxes_camera_bev.detach().cpu().numpy(), pred_bev_box.detach().cpu().numpy(), criterion=-1)
-                    iou_bev = d3_box_overlap(d3_gt_boxes_camera.detach().cpu().numpy(), pred_3d_box.squeeze().detach().cpu().numpy(), criterion=-1)
-                    iou_bev_max = np.amax(iou_bev,axis=0)
-                    #print(np.max(iou_bev_max))
-                    target_for_fusion = ((iou_bev_max >= 0.7)*1).reshape(1,-1,1)
+                    pred_bev_box = pred_3d_box[:, [0, 2, 3, 5, 6]]
+                    # iou_bev = bev_box_overlap(d3_gt_boxes_camera_bev.detach().cpu().numpy(), pred_bev_box.detach().cpu().numpy(), criterion=-1)
+                    iou_bev = d3_box_overlap(d3_gt_boxes_camera.detach().cpu().numpy(),
+                                             pred_3d_box.squeeze().detach().cpu().numpy(), criterion=-1)
+                    iou_bev_max = np.amax(iou_bev, axis=0)
+                    # print(np.max(iou_bev_max))
+                    target_for_fusion = ((iou_bev_max >= 0.7) * 1).reshape(1, -1, 1)
 
-                    positive_index = ((iou_bev_max >= 0.7)*1).reshape(1,-1)
+                    positive_index = ((iou_bev_max >= 0.7) * 1).reshape(1, -1)
                     positives = torch.from_numpy(positive_index).type(torch.float32).cuda()
-                    negative_index = ((iou_bev_max <= 0.5)*1).reshape(1,-1)
+                    negative_index = ((iou_bev_max <= 0.5) * 1).reshape(1, -1)
                     negatives = torch.from_numpy(negative_index).type(torch.float32).cuda()
 
-                cls_preds,flag = fusion_layer(fusion_input.cuda(),tensor_index.cuda())
+                cls_preds, flag = fusion_layer(fusion_input.cuda(), tensor_index.cuda())
                 one_hot_targets = torch.from_numpy(target_for_fusion).type(torch.float32).cuda()
 
                 negative_cls_weights = negatives.type(torch.float32) * 1.0
                 cls_weights = negative_cls_weights + 1.0 * positives.type(torch.float32)
                 pos_normalizer = positives.sum(1, keepdim=True).type(torch.float32)
                 cls_weights /= torch.clamp(pos_normalizer, min=1.0)
-                if flag==1:
+                if flag == 1:
                     cls_losses = focal_loss._compute_loss(cls_preds, one_hot_targets, cls_weights.cuda())  # [N, M]
-                    cls_losses_reduced = cls_losses.sum()/example_torch['labels'].shape[0]
+                    cls_losses_reduced = cls_losses.sum() / example_torch['labels'].shape[0]
                     cls_loss_sum = cls_loss_sum + cls_losses_reduced
                     if train_cfg.enable_mixed_precision:
                         loss *= loss_scale
@@ -284,10 +289,10 @@ def train(config_path,
                 metrics = {}
                 global_step = net.get_global_step()
                 if global_step % display_step == 0:
-                    print("now it is",global_step,"steps", " and the cls_loss is :",cls_loss_sum/display_step,
-                    "learning_rate: ",float(optimizer.lr),file=logf)
-                    print("now it is",global_step,"steps", " and the cls_loss is :",cls_loss_sum/display_step,
-                    "learning_rate: ",float(optimizer.lr))
+                    print("now it is", global_step, "steps", " and the cls_loss is :", cls_loss_sum / display_step,
+                          "learning_rate: ", float(optimizer.lr), file=logf)
+                    print("now it is", global_step, "steps", " and the cls_loss is :", cls_loss_sum / display_step,
+                          "learning_rate: ", float(optimizer.lr))
                     cls_loss_sum = 0
 
                 ckpt_elasped_time = time.time() - ckpt_start_time
@@ -327,18 +332,18 @@ def train(config_path,
                     dt_annos_i, val_losses = predict_kitti_to_anno(
                         net, detection_2d_path, fusion_layer, example, class_names, center_limit_range,
                         model_cfg.lidar_input)
-                    dt_annos+= dt_annos_i
+                    dt_annos += dt_annos_i
                     val_loss_final = val_loss_final + val_losses
                 else:
-                    _predict_kitti_to_file(net, detection_2d_path,example, result_path_step,
+                    _predict_kitti_to_file(net, detection_2d_path, example, result_path_step,
                                            class_names, center_limit_range,
                                            model_cfg.lidar_input)
 
                 prog_bar.print_bar()
 
             sec_per_ex = len(eval_dataset) / (time.time() - t)
-            print("validation_loss:", val_loss_final/len(eval_dataloader))
-            print("validation_loss:", val_loss_final/len(eval_dataloader),file=logf)
+            print("validation_loss:", val_loss_final / len(eval_dataloader))
+            print("validation_loss:", val_loss_final / len(eval_dataloader), file=logf)
             print(f'generate label finished({sec_per_ex:.2f}/s). start eval:')
             print(
                 f'generate label finished({sec_per_ex:.2f}/s). start eval:',
@@ -360,7 +365,7 @@ def train(config_path,
                 with open(result_path_step / "result.pkl", 'wb') as f:
                     pickle.dump(dt_annos, f)
             writer.add_text('eval_result', result, global_step)
-            #net.train()
+            # net.train()
             fusion_layer.train()
     except Exception as e:
 
@@ -387,15 +392,15 @@ def _predict_kitti_to_file(net,
                            lidar_input=False):
     batch_image_shape = example['image_shape']
     batch_imgidx = example['image_idx']
-    all_3d_output_camera_dict, all_3d_output, top_predictions, fusion_input,torch_index = net(example,detection_2d_path)
+    all_3d_output_camera_dict, all_3d_output, top_predictions, fusion_input, torch_index = net(example,
+                                                                                               detection_2d_path)
     t_start = time.time()
-    fusion_cls_preds,flag = fusion_layer(fusion_input.cuda(),torch_index.cuda())
+    fusion_cls_preds, flag = fusion_layer(fusion_input.cuda(), torch_index.cuda())
     t_end = time.time()
     t_fusion = t_end - t_start
-    fusion_cls_preds_reshape = fusion_cls_preds.reshape(1,200,176,2)
-    all_3d_output.update({'cls_preds':fusion_cls_preds_reshape})
-    predictions_dicts = predict_v2(net,example, all_3d_output)
-
+    fusion_cls_preds_reshape = fusion_cls_preds.reshape(1, 200, 176, 2)
+    all_3d_output.update({'cls_preds': fusion_cls_preds_reshape})
+    predictions_dicts = predict_v2(net, example, all_3d_output)
 
     for i, preds_dict in enumerate(predictions_dicts):
         image_shape = batch_image_shape[i]
@@ -457,36 +462,39 @@ def predict_kitti_to_anno(net,
     focal_loss_val = SigmoidFocalClassificationLoss()
     batch_image_shape = example['image_shape']
     batch_imgidx = example['image_idx']
-    all_3d_output_camera_dict, all_3d_output, top_predictions, fusion_input,torch_index = net(example,detection_2d_path)
+    all_3d_output_camera_dict, all_3d_output, top_predictions, fusion_input, torch_index = net(example,
+                                                                                               detection_2d_path)
     t_start = time.time()
-    fusion_cls_preds,flag = fusion_layer(fusion_input.cuda(),torch_index.cuda())
+    fusion_cls_preds, flag = fusion_layer(fusion_input.cuda(), torch_index.cuda())
     t_end = time.time()
     t_fusion = t_end - t_start
-    fusion_cls_preds_reshape = fusion_cls_preds.reshape(1,200,176,2)
-    all_3d_output.update({'cls_preds':fusion_cls_preds_reshape})   ###########################################!!!!!!!!!!!!!
-    predictions_dicts = predict_v2(net,example, all_3d_output)
-    test_mode=False
-    if test_mode==False:
-        d3_gt_boxes = example["d3_gt_boxes"][0,:,:]
+    fusion_cls_preds_reshape = fusion_cls_preds.reshape(1, 200, 176, 2)
+    all_3d_output.update(
+        {'cls_preds': fusion_cls_preds_reshape})  ###########################################!!!!!!!!!!!!!
+    predictions_dicts = predict_v2(net, example, all_3d_output)
+    test_mode = False
+    if test_mode == False:
+        d3_gt_boxes = example["d3_gt_boxes"][0, :, :]
         if d3_gt_boxes.shape[0] == 0:
-            target_for_fusion = np.zeros((1,70400,1))
-            positives = torch.zeros(1,70400).type(torch.float32).cuda()
-            negatives = torch.zeros(1,70400).type(torch.float32).cuda()
-            negatives[:,:] = 1
+            target_for_fusion = np.zeros((1, 70400, 1))
+            positives = torch.zeros(1, 70400).type(torch.float32).cuda()
+            negatives = torch.zeros(1, 70400).type(torch.float32).cuda()
+            negatives[:, :] = 1
         else:
             d3_gt_boxes_camera = box_torch_ops.box_lidar_to_camera(
-                d3_gt_boxes, example['rect'][0,:], example['Trv2c'][0,:])
-            d3_gt_boxes_camera_bev = d3_gt_boxes_camera[:,[0,2,3,5,6]]
+                d3_gt_boxes, example['rect'][0, :], example['Trv2c'][0, :])
+            d3_gt_boxes_camera_bev = d3_gt_boxes_camera[:, [0, 2, 3, 5, 6]]
             ###### predicted bev boxes
             pred_3d_box = all_3d_output_camera_dict[0]["box3d_camera"]
-            pred_bev_box = pred_3d_box[:,[0,2,3,5,6]]
-            #iou_bev = bev_box_overlap(d3_gt_boxes_camera_bev.detach().cpu().numpy(), pred_bev_box.detach().cpu().numpy(), criterion=-1)
-            iou_bev = d3_box_overlap(d3_gt_boxes_camera.detach().cpu().numpy(), pred_3d_box.squeeze().detach().cpu().numpy(), criterion=-1)
-            iou_bev_max = np.amax(iou_bev,axis=0)
-            target_for_fusion = ((iou_bev_max >= 0.7)*1).reshape(1,-1,1)
-            positive_index = ((iou_bev_max >= 0.7)*1).reshape(1,-1)
+            pred_bev_box = pred_3d_box[:, [0, 2, 3, 5, 6]]
+            # iou_bev = bev_box_overlap(d3_gt_boxes_camera_bev.detach().cpu().numpy(), pred_bev_box.detach().cpu().numpy(), criterion=-1)
+            iou_bev = d3_box_overlap(d3_gt_boxes_camera.detach().cpu().numpy(),
+                                     pred_3d_box.squeeze().detach().cpu().numpy(), criterion=-1)
+            iou_bev_max = np.amax(iou_bev, axis=0)
+            target_for_fusion = ((iou_bev_max >= 0.7) * 1).reshape(1, -1, 1)
+            positive_index = ((iou_bev_max >= 0.7) * 1).reshape(1, -1)
             positives = torch.from_numpy(positive_index).type(torch.float32).cuda()
-            negative_index = ((iou_bev_max <= 0.5)*1).reshape(1,-1)
+            negative_index = ((iou_bev_max <= 0.5) * 1).reshape(1, -1)
             negatives = torch.from_numpy(negative_index).type(torch.float32).cuda()
 
         cls_preds = fusion_cls_preds
@@ -498,7 +506,7 @@ def predict_kitti_to_anno(net,
         cls_weights /= torch.clamp(pos_normalizer, min=1.0)
         cls_losses = focal_loss_val._compute_loss(cls_preds, one_hot_targets, cls_weights.cuda())  # [N, M]
 
-        cls_losses_reduced = cls_losses.sum()/example['labels'].shape[0]
+        cls_losses_reduced = cls_losses.sum() / example['labels'].shape[0]
         cls_losses_reduced = cls_losses_reduced.detach().cpu().numpy()
     else:
         cls_losses_reduced = 1000
@@ -561,7 +569,7 @@ def predict_kitti_to_anno(net,
         num_example = annos[-1]["name"].shape[0]
         annos[-1]["image_idx"] = np.array(
             [img_idx] * num_example, dtype=np.int64)
-        #cls_losses_reduced=100
+        # cls_losses_reduced=100
     return annos, cls_losses_reduced
 
 
@@ -575,7 +583,7 @@ def evaluate(config_path,
              measure_time=False,
              batch_size=None):
     model_dir = pathlib.Path(model_dir)
-    print("Predict_test: ",predict_test)
+    print("Predict_test: ", predict_test)
     if predict_test:
         result_name = 'predict_test'
     else:
@@ -605,7 +613,7 @@ def evaluate(config_path,
                                                     bv_range, box_coder)
     class_names = target_assigner.classes
     # this one is used for training car detector
-    net = build_inference_net('./configs/car.fhd.config','../model_dir')
+    net = build_inference_net(config_path, model_dir)
     fusion_layer = fusion.fusion()
     fusion_layer.cuda()
     net.cuda()
@@ -630,7 +638,7 @@ def evaluate(config_path,
         eval_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0,# input_cfg.num_workers,
+        num_workers=0,  # input_cfg.num_workers,
         pin_memory=False,
         collate_fn=merge_second_batch)
 
@@ -664,13 +672,13 @@ def evaluate(config_path,
             prep_example_times.append(time.time() - t1)
 
         if pickle_result:
-            dt_annos_i, val_losses= predict_kitti_to_anno(
+            dt_annos_i, val_losses = predict_kitti_to_anno(
                 net, detection_2d_path, fusion_layer, example, class_names, center_limit_range,
-                model_cfg.lidar_input,global_set)
-            dt_annos+= dt_annos_i
+                model_cfg.lidar_input, global_set)
+            dt_annos += dt_annos_i
             val_loss_final = val_loss_final + val_losses
         else:
-            _predict_kitti_to_file(net, detection_2d_path,fusion_layer, example, result_path_step, class_names,
+            _predict_kitti_to_file(net, detection_2d_path, fusion_layer, example, result_path_step, class_names,
                                    center_limit_range, model_cfg.lidar_input)
         bar.print_bar()
         if measure_time:
@@ -678,7 +686,7 @@ def evaluate(config_path,
 
     sec_per_example = len(eval_dataset) / (time.time() - t)
     print(f'generate label finished({sec_per_example:.2f}/s). start eval:')
-    print("validation_loss:", val_loss_final/len(eval_dataloader))
+    print("validation_loss:", val_loss_final / len(eval_dataloader))
     if measure_time:
         print(f"avg example to torch time: {np.mean(prep_example_times) * 1000:.3f} ms")
         print(f"avg prep time: {np.mean(prep_times) * 1000:.3f} ms")
@@ -711,7 +719,8 @@ def save_config(config_path, save_path):
     with open(save_path, 'w') as f:
         f.write(ret)
 
-def predict_v2(net,example, preds_dict):
+
+def predict_v2(net, example, preds_dict):
     t = time.time()
     batch_size = example['anchors'].shape[0]
     batch_anchors = example["anchors"].view(batch_size, -1, 7)
@@ -735,7 +744,7 @@ def predict_v2(net,example, preds_dict):
     batch_cls_preds = batch_cls_preds.view(batch_size, -1,
                                            num_class_with_bg)
     batch_box_preds = net._box_coder.decode_torch(batch_box_preds,
-                                                   batch_anchors)
+                                                  batch_anchors)
     if net._use_direction_classifier:
         batch_dir_preds = preds_dict["dir_cls_preds"]
         batch_dir_preds = batch_dir_preds.view(batch_size, -1, 2)
@@ -867,8 +876,8 @@ def predict_v2(net,example, preds_dict):
             label_preds = selected_labels
             if net._use_direction_classifier:
                 dir_labels = selected_dir_labels
-                #print("dir_labels shape is:",dir_labels.shape,"the values are: ",dir_labels)
-                opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.byte()
+                # print("dir_labels shape is:",dir_labels.shape,"the values are: ",dir_labels)
+                opp_labels = (box_preds[..., -1] > 0) ^ dir_labels.bool()
                 box_preds[..., -1] += torch.where(
                     opp_labels,
                     torch.tensor(np.pi).type_as(box_preds),
@@ -913,6 +922,7 @@ def predict_v2(net,example, preds_dict):
             }
         predictions_dicts.append(predictions_dict)
     return predictions_dicts
+
 
 if __name__ == '__main__':
     fire.Fire()
